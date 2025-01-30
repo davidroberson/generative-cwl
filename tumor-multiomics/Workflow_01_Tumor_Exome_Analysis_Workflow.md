@@ -18,6 +18,7 @@ graph TD
     K[Known Variants] --> D
     D --> E[Apply Recalibration<br/>/gatk_applybqsr_tool]
     E --> F[Variant Calling<br/>/gatk_mutect2_tool]
+    DB[dbSNP] --> F
     F --> G[Variant Filtration<br/>/gatk_filtermutectcalls_tool]
     G --> H[Variant Annotation<br/>/snpeff_tool]
     H --> I[Output: Annotated VCF]
@@ -26,6 +27,7 @@ graph TD
     style A fill:#f9f,stroke:#333,stroke-width:2px
     style R fill:#bbf,stroke:#333,stroke-width:2px
     style K fill:#bbf,stroke:#333,stroke-width:2px
+    style DB fill:#bbf,stroke:#333,stroke-width:2px
     style I fill:#bfb,stroke:#333,stroke-width:2px
     style N fill:#bfb,stroke:#333,stroke-width:2px
     style QC1 fill:#e6e6fa,stroke:#333,stroke-width:2px
@@ -42,7 +44,7 @@ graph TD
 
 ### Diagram Legend
 - Pink boxes: Initial inputs (FASTQ files)
-- Blue boxes: Reference data (Reference genome, Known variants)
+- Blue boxes: Reference data (Reference genome, Known variants, dbSNP)
 - Green boxes: Final outputs (Annotated VCF, QC reports)
 - Lavender boxes: Processing steps (with specific tool IDs)
 
@@ -111,23 +113,51 @@ cwlVersion: v1.2
 class: Workflow
 label: Tumor Exome Analysis Pipeline
 
+requirements:
+  SubworkflowFeatureRequirement: {}
+  ScatterFeatureRequirement: {}
+  InlineJavascriptRequirement: {}
+  StepInputExpressionRequirement: {}
+
 inputs:
   tumor_fastq_1: File
   tumor_fastq_2: File
-  reference_genome: File
-  known_variants: File
-  dbsnp: File
+  reference_genome:
+    type: File
+    secondaryFiles:
+      - .amb
+      - .ann
+      - .bwt
+      - .pac
+      - .sa
+      - .fai
+      - ^.dict
+  known_variants:
+    type: File[]
+    secondaryFiles: [.tbi]
+  dbsnp:
+    type: File
+    secondaryFiles: [.tbi]
 
 outputs:
-  filtered_vcf:
-    type: File
-    outputSource: variant_annotation/annotated_vcf
-  alignment_stats:
-    type: File
-    outputSource: alignment/aligned_sam
+  fastqc_reports:
+    type: File[]
+    outputSource: [quality_control_1/html_file, quality_control_2/html_file]
   multiqc_report:
     type: File
     outputSource: multiqc/report
+  final_bam:
+    type: File
+    outputSource: apply_bqsr/recalibrated_bam
+  filtered_vcf:
+    type: File
+    outputSource: filter_mutect/filtered_vcf
+  annotated_vcf:
+    type: File
+    outputSource: variant_annotation/annotated_vcf
+  variant_stats:
+    type: File
+    outputSource: variant_annotation/stats
 
 steps:
   quality_control_1:
@@ -147,10 +177,11 @@ steps:
   multiqc:
     run: ../cwl-tool-library/qc_tools.cwl#multiqc_tool
     in:
-      input_dir:
-        type: Directory
+      input_files:
         source: [quality_control_1/html_file, quality_control_2/html_file]
-    out: [report]
+      output_dir:
+        default: "multiqc_output"
+    out: [report, data]
 
   alignment:
     run: ../cwl-tool-library/alignment_tools.cwl#bwa_mem_tool
@@ -175,6 +206,7 @@ steps:
       input_bam: mark_duplicates/dedup_bam
       reference: reference_genome
       known_sites: known_variants
+      output_name: { default: "recal_data.table" }
     out: [recal_table]
 
   apply_bqsr:
@@ -183,31 +215,31 @@ steps:
       input_bam: mark_duplicates/dedup_bam
       reference: reference_genome
       recal_table: base_recalibration/recal_table
-      output_name: { default: "recalibrated.bam" }
+      output_bam: { default: "recalibrated.bam" }
     out: [recalibrated_bam]
 
   mutect2:
     run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_mutect2_tool
     in:
-      input_bam: apply_bqsr/recalibrated_bam
       reference: reference_genome
-      tumor_sample: { default: "TUMOR" }
-      output_name: { default: "somatic_variants.vcf" }
-    out: [vcf, stats, f1r2]
+      tumor_bam: apply_bqsr/recalibrated_bam
+      dbsnp: dbsnp
+      output_vcf: { default: "unfiltered.vcf" }
+    out: [vcf, stats]
 
   filter_mutect:
     run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_filtermutectcalls_tool
     in:
-      input_vcf: mutect2/vcf
+      vcf: mutect2/vcf
       reference: reference_genome
-      output_name: { default: "filtered_somatic_variants.vcf" }
+      output_vcf: { default: "filtered.vcf" }
     out: [filtered_vcf, filtering_stats]
 
   variant_annotation:
     run: ../cwl-tool-library/variant_analysis_tools.cwl#snpeff_tool
     in:
       input_vcf: filter_mutect/filtered_vcf
-      genome_version: "hg38"  # or appropriate reference version
+      genome_version: { default: "hg38" }
     out: [annotated_vcf, stats]
 ```
 
@@ -274,51 +306,44 @@ steps:
 - Total Storage: ~200GB per sample
 - Total Runtime: 12-24 hours per sample
 
+## Input Validation Requirements
+
+### File Validation
+1. **FASTQ Files**
+   - Must be properly paired
+   - Quality scores in Phred format
+   - No mixed encoding types
+
+2. **Reference Files**
+   - Reference genome must have all index files
+   - Known variants must have .tbi indices
+   - dbSNP must have .tbi index
+
+3. **Tool Requirements**
+   - All Docker containers must be accessible
+   - Tool executables must be in PATH
+   - Correct versions installed
+
+### Quality Thresholds
+
+#### FastQC Metrics
+- Base quality: >Q20 for 80% of bases
+- Sequence duplication: <20%
+- Adapter content: <5%
+
+#### Alignment Metrics
+- Mapping rate: >95%
+- Duplication rate: <30%
+- Mean coverage: >100x
+
+#### Variant Calling Metrics
+- Ti/Tv ratio: ~2.0-2.1 for WES
+- Het/Hom ratio: ~1.5-2.0
+- Transition/Transversion ratio: ~3.0
+
 ## Error Handling and Monitoring
 
 ### Key Monitoring Points
 1. FastQC output metrics
    - Sequence quality scores
    - GC content
-   - Duplication rates
-   - Adapter content
-
-2. BWA alignment statistics
-   - Mapping rate
-   - Insert size distribution
-   - Coverage uniformity
-
-3. GATK metrics
-   - Duplication rate
-   - Base quality score distribution
-   - Variant quality metrics
-
-### Common Error Points and Solutions
-1. **Insufficient Memory**
-   - Symptom: Java heap space errors
-   - Solution: Increase RAM allocation in tool resource requirements
-
-2. **Storage Issues**
-   - Symptom: No space left on device
-   - Solution: Monitor storage usage, implement cleanup steps
-
-3. **Reference Mismatches**
-   - Symptom: Reference index missing
-   - Solution: Verify reference genome indices are properly generated
-
-## Quality Control Thresholds
-
-### FastQC Metrics
-- Base quality: >Q20 for 80% of bases
-- Sequence duplication: <20%
-- Adapter content: <5%
-
-### Alignment Metrics
-- Mapping rate: >95%
-- Duplication rate: <30%
-- Mean coverage: >100x
-
-### Variant Calling Metrics
-- Ti/Tv ratio: ~2.0-2.1 for WES
-- Het/Hom ratio: ~1.5-2.0
-- Transition/Transversion ratio: ~3.0
