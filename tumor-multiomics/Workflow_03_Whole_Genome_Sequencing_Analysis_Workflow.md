@@ -1,39 +1,102 @@
 # Whole Genome Sequencing Analysis Workflow Documentation
 
 ## Overview
-This document describes a Common Workflow Language (CWL) implementation of a Whole Genome Sequencing (WGS) analysis pipeline. The workflow processes whole blood WGS data, focusing on germline variant discovery following GATK best practices.
+This document describes a Common Workflow Language (CWL) implementation of a Whole Genome Sequencing (WGS) analysis pipeline using specific tools from our tool library. The workflow processes germline WGS data from raw FASTQ files through variant calling and annotation, following GATK best practices.
 
 ## Workflow Diagram
 
 ```mermaid
 graph TD
-    A[Input: WGS FASTQ] --> QC[FastQC Quality Control]
-    A --> B[BWA Alignment]
+    A[Input: Paired-End WGS FASTQ] --> QC1[Quality Control<br/>/fastqc_tool<br/>Forward Reads]
+    A --> QC2[Quality Control<br/>/fastqc_tool<br/>Reverse Reads]
+    A --> B[Read Alignment<br/>/bwa_mem_tool]
     R[Reference Genome] --> B
-    D[dbSNP] --> V
-    K[Known Variants] --> BR
-    B --> C[Mark Duplicates]
-    C --> BR[Base Recalibration]
-    BR --> AB[Apply BQSR]
-    AB --> V[HaplotypeCaller]
-    V --> F[Variant Filtration]
-    F --> VA[SnpEff Annotation]
-    QC --> M[MultiQC Report]
-    VA --> O[Final VCF]
+    QC1 --> M[QC Report Generation<br/>/multiqc_tool]
+    QC2 --> M
+    B --> C[Duplicate Marking<br/>/gatk_markduplicates_tool]
+    C --> D[Base Recalibration<br/>/gatk_baserecalibrator_tool]
+    K[Known Variants] --> D
+    D[Base Recalibration] --> E[Apply Recalibration<br/>/gatk_applybqsr_tool]
+    E --> F[Variant Calling<br/>/gatk_haplotypecaller_tool]
+    DB[dbSNP] --> F
+    F --> G[Variant Filtration<br/>/gatk_variantfiltration_tool]
+    G --> H[Variant Annotation<br/>/snpeff_tool]
+    H --> I[Output: Annotated VCF]
+    M --> N[Output: QC Report]
     
     style A fill:#f9f,stroke:#333,stroke-width:2px
     style R fill:#bbf,stroke:#333,stroke-width:2px
-    style D fill:#bbf,stroke:#333,stroke-width:2px
     style K fill:#bbf,stroke:#333,stroke-width:2px
-    style O fill:#bfb,stroke:#333,stroke-width:2px
-    style M fill:#bfb,stroke:#333,stroke-width:2px
+    style DB fill:#bbf,stroke:#333,stroke-width:2px
+    style I fill:#bfb,stroke:#333,stroke-width:2px
+    style N fill:#bfb,stroke:#333,stroke-width:2px
+    style QC1 fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style QC2 fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style B fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style C fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style D fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style E fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style F fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style G fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style H fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style M fill:#e6e6fa,stroke:#333,stroke-width:2px
 ```
 
 ### Diagram Legend
 - Pink boxes: Initial inputs (FASTQ files)
 - Blue boxes: Reference data (Reference genome, Known variants, dbSNP)
-- Green boxes: Final outputs (Final VCF, Reports)
-- White boxes: Processing steps
+- Green boxes: Final outputs (Annotated VCF, QC reports)
+- Lavender boxes: Processing steps (with specific tool IDs)
+
+## Workflow Steps Description
+
+1. **Quality Control**
+   - Tool: `fastqc_tool` from qc_tools.cwl
+   - Container: biocontainers/fastqc:0.11.9
+   - Resources: 4GB RAM, 1 core
+   - Purpose: Assesses the quality of raw sequencing data
+
+2. **QC Report Generation**
+   - Tool: `multiqc_tool` from qc_tools.cwl
+   - Container: biocontainers/multiqc:1.12
+   - Resources: 4GB RAM, 1 core
+   - Purpose: Aggregates QC metrics into a single report
+
+3. **Read Alignment**
+   - Tool: `bwa_mem_tool` from alignment_tools.cwl
+   - Container: biocontainers/bwa:0.7.17
+   - Resources: 16GB RAM, 8 cores
+   - Purpose: Maps WGS reads to the reference genome
+
+4. **Mark Duplicates**
+   - Tool: `gatk_markduplicates_tool` from variant_analysis_tools.cwl
+   - Container: broadinstitute/gatk:4.3.0.0
+   - Resources: 32GB RAM, 1 core
+   - Purpose: Identifies and marks PCR duplicates
+
+5. **Base Recalibration**
+   - Tool: `gatk_baserecalibrator_tool` from variant_analysis_tools.cwl
+   - Container: broadinstitute/gatk:4.3.0.0
+   - Resources: 32GB RAM, 1 core
+   - Purpose: Generates base quality score recalibration table
+
+6. **Apply Recalibration**
+   - Tool: `gatk_applybqsr_tool` from variant_analysis_tools.cwl
+   - Container: broadinstitute/gatk:4.3.0.0
+   - Resources: 16GB RAM, 2 cores
+   - Purpose: Applies base quality score recalibration
+
+7. **Variant Calling**
+   - Tool: `gatk_haplotypecaller_tool` from variant_analysis_tools.cwl
+   - Container: broadinstitute/gatk:4.3.0.0
+   - Resources: 32GB RAM, 4 cores
+   - Purpose: Calls germline variants through local assembly
+
+8. **Variant Annotation**
+   - Tool: `snpeff_tool` from variant_analysis_tools.cwl
+   - Container: biocontainers/snpeff:5.0
+   - Resources: 16GB RAM, 4 cores
+   - Purpose: Annotates variants with functional predictions
 
 ## CWL Implementation
 
@@ -44,19 +107,12 @@ cwlVersion: v1.2
 class: Workflow
 label: WGS Analysis Pipeline
 
-requirements:
-  MultipleInputFeatureRequirement: {}
-  ScatterFeatureRequirement: {}
-  SubworkflowFeatureRequirement: {}
-  InlineJavascriptRequirement: {}
-
 inputs:
   fastq_1: File
   fastq_2: File
   reference_genome: File
   known_variants: File
   dbsnp: File
-  sample_name: string
 
 outputs:
   final_vcf:
@@ -64,190 +120,177 @@ outputs:
     outputSource: variant_annotation/annotated_vcf
   alignment_stats:
     type: File
-    outputSource: alignment/alignment_stats
+    outputSource: alignment/aligned_sam
   multiqc_report:
     type: File
-    outputSource: quality_control/multiqc_report
+    outputSource: multiqc/report
 
 steps:
-  quality_control:
-    run: fastqc.cwl
+  quality_control_1:
+    run: ../cwl-tool-library/qc_tools.cwl#fastqc_tool
     in:
-      fastq_1: fastq_1
-      fastq_2: fastq_2
-    out: [fastqc_report, multiqc_report]
+      fastq_file: fastq_1
+      threads: { default: 1 }
+    out: [html_file, zip_file]
+
+  quality_control_2:
+    run: ../cwl-tool-library/qc_tools.cwl#fastqc_tool
+    in:
+      fastq_file: fastq_2
+      threads: { default: 1 }
+    out: [html_file, zip_file]
+
+  multiqc:
+    run: ../cwl-tool-library/qc_tools.cwl#multiqc_tool
+    in:
+      input_dir:
+        type: Directory
+        source: [quality_control_1/html_file, quality_control_2/html_file]
+    out: [report]
 
   alignment:
-    run: bwa-mem.cwl
+    run: ../cwl-tool-library/alignment_tools.cwl#bwa_mem_tool
     in:
-      fastq_1: fastq_1
-      fastq_2: fastq_2
       reference: reference_genome
-      sample_name: sample_name
-    out: [aligned_bam, alignment_stats]
+      reads1: fastq_1
+      reads2: fastq_2
+      threads: { default: 8 }
+    out: [aligned_sam]
 
   mark_duplicates:
-    run: gatk-markduplicates.cwl
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_markduplicates_tool
     in:
-      input_bam: alignment/aligned_bam
-    out: [dedup_bam, metrics_file]
+      input_bam: alignment/aligned_sam
+      output_name: { default: "marked_duplicates.bam" }
+      metrics_file: { default: "duplicate_metrics.txt" }
+    out: [dedup_bam, metrics]
 
   base_recalibration:
-    run: gatk-baserecalibrator.cwl
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_baserecalibrator_tool
     in:
       input_bam: mark_duplicates/dedup_bam
       reference: reference_genome
       known_sites: known_variants
-      dbsnp: dbsnp
     out: [recal_table]
 
   apply_bqsr:
-    run: gatk-applybqsr.cwl
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_applybqsr_tool
     in:
       input_bam: mark_duplicates/dedup_bam
-      recal_table: base_recalibration/recal_table
       reference: reference_genome
-    out: [recal_bam]
+      recal_table: base_recalibration/recal_table
+      output_name: { default: "recalibrated.bam" }
+    out: [recalibrated_bam]
 
   haplotype_caller:
-    run: gatk-haplotypecaller.cwl
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_haplotypecaller_tool
     in:
-      input_bam: apply_bqsr/recal_bam
+      input_bam: apply_bqsr/recalibrated_bam
       reference: reference_genome
       dbsnp: dbsnp
-    out: [raw_vcf]
-
-  variant_filtration:
-    run: gatk-variantfiltration.cwl
-    in:
-      input_vcf: haplotype_caller/raw_vcf
-      reference: reference_genome
-    out: [filtered_vcf]
+      output_filename: { default: "raw_variants.vcf" }
+    out: [output_vcf]
 
   variant_annotation:
-    run: snpeff.cwl
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#snpeff_tool
     in:
-      input_vcf: variant_filtration/filtered_vcf
-      reference: reference_genome
-    out: [annotated_vcf]
+      input_vcf: haplotype_caller/output_vcf
+      genome_version: "hg38"  # or appropriate reference version
+    out: [annotated_vcf, stats]
 ```
 
-## Workflow Steps Description
+## Resource Requirements Summary
 
-1. **Quality Control**
-   - Tool: FastQC
-   - Purpose: Assesses the quality of raw sequencing data
-   - Outputs: Quality metrics and MultiQC summary report
+### Computational Resources by Step
+1. **Quality Control (FastQC)** - Per FASTQ file:
+   - RAM: 4GB
+   - CPU: 1 core
+   - Storage: ~2GB
+   - Time estimate: 30-60 minutes
 
-2. **Read Alignment**
-   - Tool: BWA-MEM
-   - Purpose: Aligns reads to reference genome
-   - Key features: 
-     - Optimized for longer reads
-     - Supports split alignments
-     - Handles paired-end data
+2. **QC Report Generation (MultiQC)**
+   - RAM: 4GB
+   - CPU: 1 core
+   - Storage: <1GB
+   - Time estimate: 5-10 minutes
 
-3. **Mark Duplicates**
-   - Tool: GATK MarkDuplicates
-   - Purpose: Identifies and marks PCR/optical duplicates
-   - Important for:
-     - Reducing bias in variant calling
-     - Improving data quality
+3. **Alignment (BWA-MEM)**
+   - RAM: 16GB
+   - CPU: 8 cores
+   - Storage: ~150GB
+   - Time estimate: 8-12 hours
 
-4. **Base Quality Score Recalibration (BQSR)**
-   - Tools: GATK BaseRecalibrator & ApplyBQSR
-   - Purpose: Improves accuracy of base quality scores
-   - Uses known variants to:
-     - Model systematic errors
-     - Adjust quality scores
+4. **Mark Duplicates (GATK)**
+   - RAM: 32GB
+   - CPU: 1 core
+   - Storage: ~150GB
+   - Time estimate: 4-6 hours
 
-5. **Variant Calling**
-   - Tool: GATK HaplotypeCaller
-   - Purpose: Identifies germline variants
-   - Features:
-     - Local de-novo assembly
-     - Handles SNPs and indels simultaneously
-     - Generates gVCF for cohort analysis
+5. **Base Recalibration (GATK BaseRecalibrator)**
+   - RAM: 32GB
+   - CPU: 1 core
+   - Storage: ~50GB
+   - Time estimate: 4-6 hours
 
-6. **Variant Filtration**
-   - Tool: GATK VariantFiltration
-   - Purpose: Filters low-quality variant calls
-   - Based on:
-     - Quality scores
-     - Read depth
-     - Strand bias
+6. **Apply BQSR (GATK ApplyBQSR)**
+   - RAM: 16GB
+   - CPU: 2 cores
+   - Storage: ~150GB
+   - Time estimate: 4-6 hours
 
-7. **Variant Annotation**
-   - Tool: SnpEff
-   - Purpose: Annotates variants with functional predictions
-   - Provides:
-     - Gene impact predictions
-     - Population frequencies
-     - Clinical significance
+7. **Variant Calling (GATK HaplotypeCaller)**
+   - RAM: 32GB
+   - CPU: 4 cores
+   - Storage: ~50GB
+   - Time estimate: 24-48 hours
 
-## Workflow Inputs
-- fastq_1: Forward reads FASTQ file
-- fastq_2: Reverse reads FASTQ file
-- reference_genome: Reference genome FASTA file
-- known_variants: VCF file of known variants
-- dbsnp: dbSNP database VCF file
-- sample_name: Sample identifier
+8. **Variant Annotation (SnpEff)**
+   - RAM: 16GB
+   - CPU: 4 cores
+   - Storage: ~20GB
+   - Time estimate: 2-4 hours
 
-## Workflow Outputs
-- final_vcf: Annotated variant calls
-- alignment_stats: BWA alignment statistics
-- multiqc_report: Quality control summary report
+### Total Resource Requirements
+- Peak RAM: 32GB
+- Optimal CPU: 8+ cores
+- Total Storage: ~600GB per sample
+- Total Runtime: 48-72 hours per sample
 
-## Resource Requirements
+## Error Handling and Monitoring
 
-### Computing Resources
-- CPU: Minimum 16 cores recommended
-- RAM: Minimum 64GB recommended
-- Storage: 
-  - Temporary: 500GB-1TB
-  - Final results: 100GB
-- High-performance storage system recommended
+### Key Monitoring Points
+1. FastQC output metrics
+   - Sequence quality scores
+   - GC content
+   - Duplication rates
+   - Coverage uniformity
 
-### Reference Files
-- Reference genome (with BWA indices)
-- dbSNP database
-- Known variants for BQSR
-- SnpEff databases
+2. BWA alignment statistics
+   - Mapping rate
+   - Insert size distribution
+   - Coverage depth
+   - Coverage breadth
 
-## Best Practices and Recommendations
+3. GATK metrics
+   - Duplication rate
+   - Base quality score distribution
+   - Variant calling metrics
+   - Ti/Tv ratio
 
-### Data Quality
-1. Verify input FASTQ quality metrics
-2. Monitor coverage statistics
-3. Check duplication rates
-4. Validate variant quality scores
+### Common Error Points and Solutions
+1. **Insufficient Memory**
+   - Symptom: Java heap space errors
+   - Solution: Increase RAM allocation in tool resource requirements
 
-### Performance Optimization
-1. Use local SSDs for temporary files
-2. Adjust Java heap size for GATK tools
-3. Optimize thread count for BWA alignment
-4. Consider scatter-gather for large datasets
+2. **Storage Issues**
+   - Symptom: No space left on device
+   - Solution: Monitor storage usage, implement cleanup steps
 
-### Quality Control Points
-1. Raw data quality (FastQC metrics)
-2. Alignment rates and coverage
-3. Duplication rates
-4. Base quality score distribution
-5. Variant quality metrics
-6. Ti/Tv ratios for SNPs
+3. **Coverage Issues**
+   - Symptom: Low or uneven coverage
+   - Solution: Check sequencing quality, adjust library prep
 
-## Error Handling and Troubleshooting
-1. Monitor resource usage
-2. Check log files regularly
-3. Validate intermediate outputs
-4. Common issues:
-   - Memory errors in BQSR
-   - Disk space during sorting
-   - Java heap size limitations
-   - Index file mismatches
+## Quality Control Thresholds
 
-## Notes
-- Pipeline follows GATK best practices
-- Suitable for both research and clinical applications
-- Can be extended for joint calling across multiple samples
-- Regular updates recommended for reference databases
+### FastQC Metrics
+- Base quality: >Q20 for
