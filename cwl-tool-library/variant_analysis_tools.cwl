@@ -113,6 +113,13 @@ inputs:
       - ^.bai
     inputBinding:
       prefix: -I
+  dbsnp:
+    type: File
+    secondaryFiles:
+      - .tbi
+    inputBinding:
+      prefix: --dbsnp
+    doc: "dbSNP database VCF with known variants"
   interval_list:
     type: File?
     inputBinding:
@@ -262,6 +269,12 @@ inputs:
       - ^.dict
     inputBinding:
       prefix: -R
+  dbsnp:
+    type: File
+    secondaryFiles:
+      - .tbi
+    inputBinding:
+      prefix: --dbsnp
   interval_list:
     type: File?
     inputBinding:
@@ -274,12 +287,6 @@ inputs:
     type: string?
     inputBinding:
       prefix: -ERC
-  dbsnp:
-    type: File?
-    secondaryFiles:
-      - .idx
-    inputBinding:
-      prefix: --dbsnp
 
 outputs:
   output_vcf:
