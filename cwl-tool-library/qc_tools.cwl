@@ -55,12 +55,14 @@ requirements:
     coresMin: 1
 
 inputs:
-  input_dir:
-    type: Directory
+  input_files:
+    type: File[]
     inputBinding:
       position: 1
+    doc: "List of input files to analyze"
   output_dir:
     type: string
+    default: "multiqc_output"
     inputBinding:
       prefix: -o
   filename:
@@ -72,8 +74,8 @@ outputs:
   report:
     type: File
     outputBinding:
-      glob: "*/multiqc_report.html"
+      glob: "$(inputs.output_dir)/multiqc_report.html"
   data:
     type: Directory
     outputBinding:
-      glob: "*/multiqc_data"
+      glob: "$(inputs.output_dir)/multiqc_data"
