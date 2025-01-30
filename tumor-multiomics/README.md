@@ -1,6 +1,6 @@
 # Multi-omics Cancer Study Overview
-
 ## Study Design
+
 This comprehensive multi-omics study investigates cancer biology through multiple molecular layers using a cohort of 1000 tumor samples. The study integrates:
 
 * **Tumor Samples (n=1000)**:
