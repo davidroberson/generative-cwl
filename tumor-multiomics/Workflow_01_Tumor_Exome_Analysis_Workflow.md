@@ -1,77 +1,105 @@
 # Tumor Exome Analysis Workflow Documentation
 
 ## Overview
-This document describes a Common Workflow Language (CWL) implementation of a tumor exome analysis pipeline. The workflow is designed to process tumor exome sequencing data, from raw FASTQ files to annotated variants, implementing best practices for somatic variant discovery.
+This document describes a Common Workflow Language (CWL) implementation of a tumor exome analysis pipeline using specific tools from our tool library. The workflow processes tumor exome sequencing data, from raw FASTQ files to annotated variants, implementing best practices for somatic variant discovery.
 
 ## Workflow Diagram
 
 ```mermaid
 graph TD
-    A[Input: Tumor FASTQ] --> B[BWA Alignment]
+    A[Input: Paired-End Tumor FASTQ] --> QC1[Quality Control<br/>/fastqc_tool<br/>Forward Reads]
+    A --> QC2[Quality Control<br/>/fastqc_tool<br/>Reverse Reads]
+    A --> B[Read Alignment<br/>/bwa_mem_tool]
     R[Reference Genome] --> B
-    B --> C[Mark Duplicates]
-    C --> D[Base Recalibration]
+    QC1 --> M[QC Report Generation<br/>/multiqc_tool]
+    QC2 --> M
+    B --> C[Duplicate Marking<br/>/gatk_markduplicates_tool]
+    C --> D[Base Recalibration<br/>/gatk_baserecalibrator_tool]
     K[Known Variants] --> D
-    D[Base Recalibration] --> E[Apply BQSR]
-    E --> F[MuTect2 Variant Calling]
-    F --> G[Filter Variants]
-    G --> H[SNPEff Annotation]
+    D --> E[Apply Recalibration<br/>/gatk_applybqsr_tool]
+    E --> F[Variant Calling<br/>/gatk_mutect2_tool]
+    F --> G[Variant Filtration<br/>/gatk_filtermutectcalls_tool]
+    G --> H[Variant Annotation<br/>/snpeff_tool]
     H --> I[Output: Annotated VCF]
+    M --> N[Output: QC Report]
     
     style A fill:#f9f,stroke:#333,stroke-width:2px
     style R fill:#bbf,stroke:#333,stroke-width:2px
     style K fill:#bbf,stroke:#333,stroke-width:2px
     style I fill:#bfb,stroke:#333,stroke-width:2px
+    style N fill:#bfb,stroke:#333,stroke-width:2px
+    style QC1 fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style QC2 fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style B fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style C fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style D fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style E fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style F fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style G fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style H fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style M fill:#e6e6fa,stroke:#333,stroke-width:2px
 ```
 
 ### Diagram Legend
 - Pink boxes: Initial inputs (FASTQ files)
 - Blue boxes: Reference data (Reference genome, Known variants)
-- Green boxes: Final outputs (Annotated VCF)
-- White boxes: Processing steps
+- Green boxes: Final outputs (Annotated VCF, QC reports)
+- Lavender boxes: Processing steps (with specific tool IDs)
 
 ## Workflow Steps Description
 
-1. **BWA Alignment**
-   - Tool: BWA-MEM
-   - Input: Paired-end FASTQ files
-   - Output: Aligned BAM file
-   - Purpose: Aligns raw sequencing reads to the reference genome
+1. **Quality Control**
+   - Tool: `fastqc_tool` from qc_tools.cwl
+   - Container: biocontainers/fastqc:0.11.9
+   - Resources: 4GB RAM, 1 core
+   - Purpose: Assesses the quality of raw sequencing data
 
-2. **Mark Duplicates**
-   - Tool: GATK MarkDuplicates
-   - Input: Aligned BAM
-   - Output: Deduplicated BAM
+2. **QC Report Generation**
+   - Tool: `multiqc_tool` from qc_tools.cwl
+   - Container: biocontainers/multiqc:1.12
+   - Resources: 4GB RAM, 1 core
+   - Purpose: Aggregates QC metrics into a single report
+
+3. **Read Alignment**
+   - Tool: `bwa_mem_tool` from alignment_tools.cwl
+   - Container: biocontainers/bwa:0.7.17
+   - Resources: 16GB RAM, 8 cores
+   - Purpose: Aligns raw reads to the reference genome
+
+4. **Mark Duplicates**
+   - Tool: `gatk_markduplicates_tool` from variant_analysis_tools.cwl
+   - Container: broadinstitute/gatk:4.3.0.0
+   - Resources: 32GB RAM, 1 core
    - Purpose: Identifies and marks PCR duplicates
 
-3. **Base Recalibration**
-   - Tool: GATK BaseRecalibrator
-   - Input: Deduplicated BAM
-   - Output: Recalibration table
+5. **Base Recalibration**
+   - Tool: `gatk_baserecalibrator_tool` from variant_analysis_tools.cwl
+   - Container: broadinstitute/gatk:4.3.0.0
+   - Resources: 32GB RAM, 1 core
    - Purpose: Generates base quality score recalibration table
 
-4. **Apply BQSR**
-   - Tool: GATK ApplyBQSR
-   - Input: Deduplicated BAM and recalibration table
-   - Output: Recalibrated BAM
+6. **Apply Recalibration**
+   - Tool: `gatk_applybqsr_tool` from variant_analysis_tools.cwl
+   - Container: broadinstitute/gatk:4.3.0.0
+   - Resources: 16GB RAM, 2 cores
    - Purpose: Applies base quality score recalibration
 
-5. **Variant Calling**
-   - Tool: GATK MuTect2
-   - Input: Recalibrated BAM
-   - Output: Raw VCF
+7. **Variant Calling**
+   - Tool: `gatk_mutect2_tool` from variant_analysis_tools.cwl
+   - Container: broadinstitute/gatk:4.3.0.0
+   - Resources: 32GB RAM, 4 cores
    - Purpose: Calls somatic variants
 
-6. **Variant Filtration**
-   - Tool: GATK FilterMutectCalls
-   - Input: Raw VCF
-   - Output: Filtered VCF
+8. **Variant Filtration**
+   - Tool: `gatk_filtermutectcalls_tool` from variant_analysis_tools.cwl
+   - Container: broadinstitute/gatk:4.3.0.0
+   - Resources: 16GB RAM, 2 cores
    - Purpose: Filters low-quality variant calls
 
-7. **Variant Annotation**
-   - Tool: SNPEff
-   - Input: Filtered VCF
-   - Output: Annotated VCF
+9. **Variant Annotation**
+   - Tool: `snpeff_tool` from variant_analysis_tools.cwl
+   - Container: biocontainers/snpeff:5.0
+   - Resources: 16GB RAM, 4 cores
    - Purpose: Annotates variants with functional predictions
 
 ## CWL Implementation
@@ -82,12 +110,6 @@ graph TD
 cwlVersion: v1.2
 class: Workflow
 label: Tumor Exome Analysis Pipeline
-
-requirements:
-  MultipleInputFeatureRequirement: {}
-  ScatterFeatureRequirement: {}
-  SubworkflowFeatureRequirement: {}
-  InlineJavascriptRequirement: {}
 
 inputs:
   tumor_fastq_1: File
@@ -102,95 +124,201 @@ outputs:
     outputSource: variant_annotation/annotated_vcf
   alignment_stats:
     type: File
-    outputSource: alignment/alignment_stats
-  variant_stats:
+    outputSource: alignment/aligned_sam
+  multiqc_report:
     type: File
-    outputSource: variant_calling/variant_stats
+    outputSource: multiqc/report
 
 steps:
-  alignment:
-    run: bwa-mem.cwl
+  quality_control_1:
+    run: ../cwl-tool-library/qc_tools.cwl#fastqc_tool
     in:
-      fastq_1: tumor_fastq_1
-      fastq_2: tumor_fastq_2
+      fastq_file: tumor_fastq_1
+      threads: { default: 1 }
+    out: [html_file, zip_file]
+
+  quality_control_2:
+    run: ../cwl-tool-library/qc_tools.cwl#fastqc_tool
+    in:
+      fastq_file: tumor_fastq_2
+      threads: { default: 1 }
+    out: [html_file, zip_file]
+
+  multiqc:
+    run: ../cwl-tool-library/qc_tools.cwl#multiqc_tool
+    in:
+      input_dir:
+        type: Directory
+        source: [quality_control_1/html_file, quality_control_2/html_file]
+    out: [report]
+
+  alignment:
+    run: ../cwl-tool-library/alignment_tools.cwl#bwa_mem_tool
+    in:
       reference: reference_genome
-    out: [aligned_bam, alignment_stats]
+      reads1: tumor_fastq_1
+      reads2: tumor_fastq_2
+      threads: { default: 8 }
+    out: [aligned_sam]
 
   mark_duplicates:
-    run: gatk-markduplicates.cwl
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_markduplicates_tool
     in:
-      input_bam: alignment/aligned_bam
-    out: [dedup_bam, metrics_file]
+      input_bam: alignment/aligned_sam
+      output_name: { default: "marked_duplicates.bam" }
+      metrics_file: { default: "duplicate_metrics.txt" }
+    out: [dedup_bam, metrics]
 
   base_recalibration:
-    run: gatk-baserecalibrator.cwl
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_baserecalibrator_tool
     in:
       input_bam: mark_duplicates/dedup_bam
       reference: reference_genome
       known_sites: known_variants
-      dbsnp: dbsnp
     out: [recal_table]
 
   apply_bqsr:
-    run: gatk-applybqsr.cwl
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_applybqsr_tool
     in:
       input_bam: mark_duplicates/dedup_bam
+      reference: reference_genome
       recal_table: base_recalibration/recal_table
-      reference: reference_genome
-    out: [recal_bam]
+      output_name: { default: "recalibrated.bam" }
+    out: [recalibrated_bam]
 
-  variant_calling:
-    run: gatk-mutect2.cwl
+  mutect2:
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_mutect2_tool
     in:
-      input_bam: apply_bqsr/recal_bam
+      input_bam: apply_bqsr/recalibrated_bam
       reference: reference_genome
-      dbsnp: dbsnp
-    out: [raw_vcf, variant_stats]
+      tumor_sample: { default: "TUMOR" }
+      output_name: { default: "somatic_variants.vcf" }
+    out: [vcf, stats, f1r2]
 
-  variant_filtration:
-    run: gatk-filtermutectcalls.cwl
+  filter_mutect:
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#gatk_filtermutectcalls_tool
     in:
-      input_vcf: variant_calling/raw_vcf
+      input_vcf: mutect2/vcf
       reference: reference_genome
-    out: [filtered_vcf]
+      output_name: { default: "filtered_somatic_variants.vcf" }
+    out: [filtered_vcf, filtering_stats]
 
   variant_annotation:
-    run: snpeff.cwl
+    run: ../cwl-tool-library/variant_analysis_tools.cwl#snpeff_tool
     in:
-      input_vcf: variant_filtration/filtered_vcf
-      reference: reference_genome
-    out: [annotated_vcf]
+      input_vcf: filter_mutect/filtered_vcf
+      genome_version: "hg38"  # or appropriate reference version
+    out: [annotated_vcf, stats]
 ```
 
-## Workflow Inputs
-- tumor_fastq_1: Forward reads FASTQ file
-- tumor_fastq_2: Reverse reads FASTQ file
-- reference_genome: Reference genome FASTA file
-- known_variants: VCF file of known variants
-- dbsnp: dbSNP database VCF file
+## Resource Requirements Summary
 
-## Workflow Outputs
-- filtered_vcf: Final annotated variant calls
-- alignment_stats: BWA alignment statistics
-- variant_stats: MuTect2 variant calling statistics
+### Computational Resources by Step
+1. **Quality Control (FastQC)** - Per FASTQ file:
+   - RAM: 4GB
+   - CPU: 1 core
+   - Storage: ~1GB
+   - Time estimate: 15-30 minutes
 
-## Usage Notes
-1. Ensure all required tools (BWA, GATK, SNPEff) are installed and accessible
-2. Reference files should be properly indexed
-3. Input FASTQ files should be quality-checked before running the pipeline
-4. Monitor computational resources as this pipeline can be resource-intensive
+2. **QC Report Generation (MultiQC)**
+   - RAM: 4GB
+   - CPU: 1 core
+   - Storage: <1GB
+   - Time estimate: 5-10 minutes
 
-## Resource Requirements
-- Minimum 32GB RAM recommended
-- Multi-core processor (8+ cores recommended)
-- Sufficient storage for intermediate files (>100GB recommended)
-- High-performance storage system for optimal I/O performance
+3. **Alignment (BWA-MEM)**
+   - RAM: 16GB
+   - CPU: 8 cores
+   - Storage: ~50GB
+   - Time estimate: 2-4 hours
 
-## Error Handling
-The workflow includes basic error handling through CWL. Common points of failure include:
-- Insufficient computational resources
-- Missing or corrupt input files
-- Incorrect reference genome indices
-- Tool-specific errors
+4. **Mark Duplicates (GATK)**
+   - RAM: 32GB
+   - CPU: 1 core
+   - Storage: ~50GB
+   - Time estimate: 1-2 hours
 
-Monitor log files and pipeline outputs regularly during execution.
+5. **Base Recalibration (GATK BaseRecalibrator)**
+   - RAM: 32GB
+   - CPU: 1 core
+   - Storage: ~10GB
+   - Time estimate: 1-2 hours
+
+6. **Apply BQSR (GATK ApplyBQSR)**
+   - RAM: 16GB
+   - CPU: 2 cores
+   - Storage: ~50GB
+   - Time estimate: 1-2 hours
+
+7. **Variant Calling (GATK Mutect2)**
+   - RAM: 32GB
+   - CPU: 4 cores
+   - Storage: ~20GB
+   - Time estimate: 4-8 hours
+
+8. **Variant Filtration (GATK FilterMutectCalls)**
+   - RAM: 16GB
+   - CPU: 2 cores
+   - Storage: ~10GB
+   - Time estimate: 30-60 minutes
+
+9. **Variant Annotation (SnpEff)**
+   - RAM: 16GB
+   - CPU: 4 cores
+   - Storage: ~20GB
+   - Time estimate: 30-60 minutes
+
+### Total Resource Requirements
+- Peak RAM: 32GB
+- Optimal CPU: 8+ cores
+- Total Storage: ~200GB per sample
+- Total Runtime: 12-24 hours per sample
+
+## Error Handling and Monitoring
+
+### Key Monitoring Points
+1. FastQC output metrics
+   - Sequence quality scores
+   - GC content
+   - Duplication rates
+   - Adapter content
+
+2. BWA alignment statistics
+   - Mapping rate
+   - Insert size distribution
+   - Coverage uniformity
+
+3. GATK metrics
+   - Duplication rate
+   - Base quality score distribution
+   - Variant quality metrics
+
+### Common Error Points and Solutions
+1. **Insufficient Memory**
+   - Symptom: Java heap space errors
+   - Solution: Increase RAM allocation in tool resource requirements
+
+2. **Storage Issues**
+   - Symptom: No space left on device
+   - Solution: Monitor storage usage, implement cleanup steps
+
+3. **Reference Mismatches**
+   - Symptom: Reference index missing
+   - Solution: Verify reference genome indices are properly generated
+
+## Quality Control Thresholds
+
+### FastQC Metrics
+- Base quality: >Q20 for 80% of bases
+- Sequence duplication: <20%
+- Adapter content: <5%
+
+### Alignment Metrics
+- Mapping rate: >95%
+- Duplication rate: <30%
+- Mean coverage: >100x
+
+### Variant Calling Metrics
+- Ti/Tv ratio: ~2.0-2.1 for WES
+- Het/Hom ratio: ~1.5-2.0
+- Transition/Transversion ratio: ~3.0
