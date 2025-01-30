@@ -1,11 +1,11 @@
 # Generative CWL Repository
 
-This repository contains a collection of Common Workflow Language (CWL) tools and workflows for multi-omics analysis, with a focus on cancer genomics. The content was generated with the assistance of foundational Large Language Models (LLMs) to create comprehensive, well-documented, and reusable bioinformatics pipelines.
+This repository offers a range of bioinformatics workflows and tools using the Common Workflow Language (CWL), particularly for cancer, multi-omics, and population genomics research.  Leveraging the power of large language models (LLMs), these resources are designed to be comprehensive, well-documented, and easily reusable, enabling efficient and reproducible genomics analysis.
 
 ## Repository Structure
 
 ```
-davidroberson-generative-cwl/
+generative-cwl/
 ├── cwl-tool-library/           # Reusable CWL tool definitions
 │   ├── alignment_tools.cwl     # Tools for sequence alignment
 │   ├── expression_analysis_tools.cwl  # RNA-seq and expression analysis tools
@@ -42,49 +42,12 @@ davidroberson-generative-cwl/
 
 ## Tool Collections
 
-The `cwl-tool-library` contains tools grouped by function:
-
-1. **Alignment Tools**
-   - BWA-MEM for DNA sequencing
-   - STAR for RNA sequencing
-   - Resource specifications and Docker containers included
-
-2. **Expression Analysis Tools**
-   - featureCounts for expression quantification
-   - DESeq2 for differential expression
-   - MOFA+ for multi-omics integration
-
-3. **Quality Control Tools**
-   - FastQC for raw sequence QC
-   - MultiQC for aggregated reports
-
-4. **Variant Analysis Tools**
-   - GATK suite for variant calling
+The `cwl-tool-library` contains tools grouped by function.  Why? Less files.
    - SnpEff for variant annotation
 
 ## Workflows
 
-Detailed workflow documentation is provided in Markdown format for:
-
-1. **Tumor Exome Analysis**
-   - Complete pipeline for somatic variant discovery
-   - Integration with matched normal samples
-   - Quality control and filtering steps
-
-2. **RNA-Seq Analysis**
-   - Expression quantification workflow
-   - Differential expression analysis
-   - Quality control metrics
-
-3. **Whole Genome Sequencing**
-   - Germline variant discovery
-   - Structural variant analysis
-   - Integration with other data types
-
-4. **Downstream Analysis**
-   - Visualization and reporting
-   - Statistical analysis
-   - Data packaging for publication
+Detailed workflow documentation is provided in Markdown format.  Why not CWL..Less files.
 
 ## Testing
 
