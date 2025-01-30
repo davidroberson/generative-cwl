@@ -42,12 +42,12 @@ generative-cwl/
 
 ## Tool Collections
 
-The `cwl-tool-library` contains tools grouped by function.  Why? Less files.
+The `cwl-tool-library` contains tools grouped by function.  Why?.. **Less files**.
    - SnpEff for variant annotation
 
 ## Workflows
 
-Detailed workflow documentation is provided in Markdown format.  Why not CWL..Less files.
+Detailed workflow documentation is provided in Markdown format.  Why?.. **Less files**.
 
 ## Testing
 
