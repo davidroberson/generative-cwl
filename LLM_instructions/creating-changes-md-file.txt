@@ -1,0 +1,50 @@
+<!--
+Instructions for Generating the changes.md File:
+
+1. **Purpose:**  
+   Generate a `changes.md` file that documents the new and modified files in our repository.
+
+2. **Directory Structure Section:**  
+   - Begin the file with a section that displays the repository tree, listing only the new or modified files.  
+   - Annotate each new file or directory with a comment (e.g., `# *New file*` or `# *Modified file*`).
+   - Example:
+     ```
+     ## Directory structure (new/modified files only):
+     └── davidroberson-generative-cwl/
+         ├── cwl-tool-library/
+         │   └── m-regle-tools.cwl  # *New file: consolidated tool collection*
+         └── gwas-m-regle/
+             ├── M-REGLE-workflow-overview.md  # *Modified file: updated to reference the standalone workflow*
+             └── packed_workflow.cwl           # *New file: standalone packed workflow file*
+     ```
+
+3. **User Requested Changes Section:**  
+   - Include a dedicated section titled **User Requested Changes:** that lists, in bullet form, the changes requested by the user.
+   - Example:
+     ```
+     =================================================
+     User Requested Changes:
+     =================================================
+     - Create new file: `cwl-tool-library/m-regle-tools.cwl` (consolidated tool collection with multiple CWL tool definitions).
+     - Create new file: `gwas-m-regle/packed_workflow.cwl` (standalone packed workflow referencing the consolidated tools using fragment identifiers).
+     - Modify file: `gwas-m-regle/M-REGLE-workflow-overview.md` to update references to the new standalone workflow.
+     ```
+
+4. **File Sections:**  
+   - For each new or modified file, include a section starting with a clearly delimited header indicating the file path.
+   - Example header:
+     ```
+     =================================================
+     File: cwl-tool-library/m-regle-tools.cwl
+     =================================================
+     ```
+   - Immediately below the header, include a fenced code block (with an appropriate language specifier such as `yaml` for CWL files or `markdown` for Markdown files) that contains the full content of the file.
+
+5. **Content Requirements:**  
+   - The `cwl-tool-library/m-regle-tools.cwl` file should contain consolidated CWL tool definitions (multiple tool definitions separated by document markers as needed).
+   - The `gwas-m-regle/packed_workflow.cwl` file should contain the complete, standalone packed workflow referencing the tools from the consolidated file via fragment identifiers (e.g., `#tool-1`).
+   - The `gwas-m-regle/M-REGLE-workflow-overview.md` file should provide an overview and reference the standalone workflow file.
+
+6. **Additional Notes:**  
+   - Do not include any additional parser instructions or details beyond documenting the new or modified files and listing the user-requested changes.
+-->
