@@ -157,4 +157,27 @@ outputs:
 
 #Dockerfile
 #Dockerfile that works for all tools in this collection
+# Use an official Python slim image (adjust the version if necessary)
+FROM python:3.9-slim
+
+# Install Git and any other build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set the working directory for the clone
+WORKDIR /opt
+
+# Clone the entire genomics-research repository from GitHub
+RUN git clone https://github.com/Google-Health/genomics-research.git
+
+# Set the working directory to the mregle folder
+WORKDIR /opt/genomics-research/mregle
+
+# Upgrade pip and install Python dependencies from requirements.txt
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+# Default command: start an interactive shell (adjust if you want to run a specific script)
+CMD ["bash"]
 
