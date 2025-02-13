@@ -11,30 +11,77 @@ This app is a simple command-line tool, written in Julia, that performs an **ord
 
 ## 2. Installation and Dependencies
 
-### Julia and Package Requirements
+You can run this Ordinal GWAS tool by building and running a **Docker image** that already contains all required dependencies. Below is a Dockerfile (obtained from the OrdinalGWAS GitHub repository) based on **CentOS 7**, which installs Julia, the necessary system libraries, and the relevant Julia packages (`SnpArrays.jl`, `OrdinalMultinomialModels.jl`, and `OrdinalGWAS.jl`).
 
-1. [Julia](https://julialang.org/downloads/) (version 1.6+ recommended).
-2. The following Julia packages need to be installed in your environment:
-   - **OrdinalGWAS.jl**
-   - **SnpArrays.jl**
-   - **CSV.jl**
-   - **DataFrames.jl**
+```dockerfile
+FROM centos:7
 
-You can install them from the Julia REPL:
+WORKDIR /root
 
-```julia
-using Pkg
-Pkg.add(["OrdinalGWAS", "SnpArrays", "CSV", "DataFrames"])
+RUN yum update -y && yum install -y epel-release && yum clean all
+
+RUN yum update -y && yum install -y \
+    cmake \
+    curl-devel \
+    expat-devel \
+    gcc \
+    gcc-c++ \
+    gcc-gfortran \
+    gettext-devel \
+    git \
+    make \
+    openssl \
+    openssl098e \
+    openssl-devel \
+    patch \
+    svn \
+    wget \
+    which \
+    && yum clean all
+
+ENV PATH /usr/local/sbin:/usr/local/bin:$PATH
+ENV LD_LIBRARY_PATH /usr/local/lib:/usr/local/lib64
+
+# Julia
+ENV JULIA_VER_MAJ 1.1
+ENV JULIA_VER_MIN .0
+ENV JULIA_VER $JULIA_VER_MAJ$JULIA_VER_MIN
+
+RUN wget https://julialang-s3.julialang.org/bin/linux/x64/$JULIA_VER_MAJ/julia-$JULIA_VER-linux-x86_64.tar.gz \
+    && mkdir /usr/local/julia \
+    && tar xf julia-$JULIA_VER-linux-x86_64.tar.gz --directory /usr/local/julia --strip-components=1 \
+    && ln -s /usr/local/julia/bin/julia /usr/local/bin/julia \
+    && rm -f julia-$JULIA_VER-linux-x86_64.tar.gz
+
+ENV JULIA_PKGDIR /usr/local/julia/share/julia/site
+
+RUN julia -e 'using Pkg; \
+    Pkg.add([ \
+    PackageSpec(url="https://github.com/OpenMendel/SnpArrays.jl"), \
+    PackageSpec(url="https://github.com/OpenMendel/OrdinalMultinomialModels.jl"), \
+    PackageSpec(url="https://github.com/OpenMendel/OrdinalGWAS.jl") \
+    ]); \
+    Pkg.test("OrdinalGWAS");'
 ```
 
-### Scripts
+### Building and Using the Docker Image
 
-- **`ordinal_gwas.jl`**: The main script that orchestrates reading inputs, performing the ordinal GWAS, and writing results.
+1. **Save** the above contents to a file named `Dockerfile`.
+2. **Build** the image:
+   ```bash
+   docker build -t ordinalgwas-centos7 .
+   ```
+3. **Run** the container interactively or in batch mode, mounting your data directory if needed:
+   ```bash
+   docker run -it --rm \
+       -v /path/to/mydata:/data \
+       ordinalgwas-centos7 bash
+   ```
+   Inside the container, you can use `julia` (with pre-installed OrdinalGWAS) or run your scripts that rely on `OrdinalGWAS.jl`.
 
 ## 3. Usage
 
 Assume you have the following files:
-
 - `data.bed`, `data.bim`, `data.fam`: Your genotype dataset in PLINK binary format.
 - `phenotype.csv`: A CSV file with a column named **`phenotype`** for the ordinal trait.
 - `covariates.csv` *(optional)*: Additional columns (e.g., `cov1`, `cov2`, …) for confounders.
@@ -98,22 +145,20 @@ geno_snp = SnpArray{UInt8}(geno_mat)
 # Write the .bed file
 write_bed("test.bed", geno_snp)
 
-# Create a simple .fam file with minimal required columns: FID, IID, father, mother, sex, phenotype
+# Create a simple .fam file
 open("test.fam", "w") do f
     for i in 1:n_indiv
         println(f, "FID$i IID$i 0 0 1 -9")
     end
 end
 
-# Create a simple .bim file with minimal columns: chrom, snp, genDist, bpPos, allele1, allele2
+# Create a simple .bim file
 open("test.bim", "w") do f
     for m in 1:n_markers
         println(f, "1 rs$m 0 $m A C")
     end
 end
 ```
-
-This yields `test.bed`, `test.bim`, `test.fam` for 100 individuals × 10 markers.
 
 ### 5.2 Generating a Synthetic Phenotype File
 
@@ -158,10 +203,142 @@ This should produce a file named `synthetic_test.csv` with association results. 
 
 ## 6. Troubleshooting and Tips
 
-- **Installation Issues**: Check that your Julia environment has the necessary packages. You can also consider a Docker/Singularity container with these dependencies pre-installed.
-- **Column Names**: If your phenotype or covariate files use column names other than `"phenotype"`, `"sample_id"`, etc., update the script to match your actual file structure.
-- **Memory Constraints**: With very large genotype files, you may need more RAM. For ~10,000 individuals and ~1 million variants, typical modern workstations should suffice, but monitor memory usage.
-- **Convergence**: Ordinal logistic models can fail to converge if a category is extremely rare (e.g., no samples in one category). Ensure your phenotype distribution is suitable for ordinal modeling.
+- **Docker Build Errors**: If the Docker build fails, ensure you have network access and that the CentOS repositories are available.  
+- **Column Names**: If your phenotype or covariate files use different column names, update the script accordingly.  
+- **Memory Constraints**: Large genotype or sample sizes require sufficient memory.  
+- **Convergence**: Ordinal logistic models can fail to converge if a category is extremely rare.
+
+## 7. Example CWL File
+
+Below is a **CWL v1.2** `CommandLineTool` specification that runs our Julia script (`ordinal_gwas.jl`). The script itself is placed into the working directory using the `InitialWorkDirRequirement`, so you only need to supply input file paths and an output prefix.
+
+```yaml
+cwlVersion: v1.2
+class: CommandLineTool
+
+requirements:
+  - class: ShellCommandRequirement
+  - class: InitialWorkDirRequirement
+    listing:
+      - entryname: "ordinal_gwas.jl"
+        entry: |
+          #!/usr/bin/env julia
+          ################################################################
+          # ordinal_gwas.jl
+          # A simple Julia script for OrdinalGWAS.jl
+          ################################################################
+
+          using OrdinalGWAS
+          using SnpArrays
+          using CSV
+          using DataFrames
+
+          genotype_file = nothing
+          phenotype_file = nothing
+          covariate_file = nothing
+          output_prefix  = "gwas_results"
+
+          for i in 1:length(ARGS)
+              if ARGS[i] == "--genotype"
+                  genotype_file = ARGS[i+1]
+              elseif ARGS[i] == "--phenotype"
+                  phenotype_file = ARGS[i+1]
+              elseif ARGS[i] == "--covariates"
+                  covariate_file = ARGS[i+1]
+              elseif ARGS[i] == "--output-prefix"
+                  output_prefix = ARGS[i+1]
+              end
+          end
+
+          if isnothing(genotype_file) || isnothing(phenotype_file)
+              println("ERROR: Must provide genotype and phenotype files.")
+              exit(1)
+          end
+
+          println("Genotype file:   ", genotype_file)
+          println("Phenotype file:  ", phenotype_file)
+          println("Covariate file:  ", covariate_file)
+          println("Output prefix:   ", output_prefix)
+
+          # Load genotype data
+          geno = SnpArray(genotype_file)
+
+          # Load phenotype
+          pheno_df = CSV.read(phenotype_file, DataFrame)
+          if !("phenotype" in names(pheno_df))
+              println("ERROR: The phenotype column 'phenotype' not found.")
+              exit(1)
+          end
+          y = pheno_df[:, "phenotype"]
+
+          # Covariates
+          covmat = nothing
+          if !isnothing(covariate_file)
+              cov_df = CSV.read(covariate_file, DataFrame)
+              cov_cols = setdiff(names(cov_df), ["sample_id"])
+              covmat = Matrix(cov_df[:, cov_cols])
+          end
+
+          # Run ordinal GWAS
+          results = ordinal_gwas(geno, y, covariates = covmat)
+
+          # Write to CSV
+          out_csv = string(output_prefix, ".csv")
+          CSV.write(out_csv, results)
+          println("GWAS completed. Results written to ", out_csv)
+
+baseCommand:
+  - "julia"
+  - "ordinal_gwas.jl"
+
+inputs:
+  genotype_file:
+    type: File
+    inputBinding:
+      prefix: "--genotype"
+      separate: true
+
+  phenotype_file:
+    type: File
+    inputBinding:
+      prefix: "--phenotype"
+      separate: true
+
+  covariate_file:
+    type: File?
+    inputBinding:
+      prefix: "--covariates"
+      separate: true
+
+  output_prefix:
+    type: string
+    default: "gwas_results"
+    inputBinding:
+      prefix: "--output-prefix"
+      separate: true
+
+outputs:
+  gwas_output:
+    type: File
+    outputBinding:
+      glob: "*.csv"
+```
+
+To run this **CWL tool**, simply execute:
+
+```bash
+cwltool ordinal-gwas-tool.cwl \
+  --genotype_file data.bed \
+  --phenotype_file phenotype.csv \
+  --covariate_file covariates.csv \
+  --output_prefix my_gwas_results
+```
+
+Where:
+- `data.bed`/`.bim`/`.fam` contain your genotype data.
+- `phenotype.csv` has the ordinal outcome column (`phenotype`).
+- `covariates.csv` (optional) has additional columns you wish to include as regressors.
+- `my_gwas_results` is the prefix for the output CSV.
 
 ---
 
