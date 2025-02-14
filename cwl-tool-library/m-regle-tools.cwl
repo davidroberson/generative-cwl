@@ -1,8 +1,8 @@
 # CWL Tools for the m-REGLE project
 # source: https://github.com/Google-Health/genomics-research/tree/main/mregle
 
-#generate_dataset_from_ukb
-# CWL tool for generating a demo dataset from the UK Biobank sample
+#CWL generate_dataset_from_ukb.cwl
+# tool for generating a demo dataset from the UK Biobank sample
 cwlVersion: v1.2
 class: CommandLineTool
 baseCommand: 
@@ -13,7 +13,11 @@ doc: |
    • --out_dir : a string naming the directory where the output (e.g. “ecgppg_ml_data.npy” or “ecg_ml_data.npy”) is written.
    • --dataset : a string indicating the dataset type (e.g. “ecgppg” or “ecg12”).
    • --duplicates (optional): an integer specifying how many copies to create (used for demo training data).
-  
+
+requirements:
+  DockerRequirement:
+    dockerPull: ghcr.io/davidroberson/mregle:250210
+
 inputs:
   out_dir:
     type: string
@@ -39,10 +43,9 @@ outputs:
     type: Directory
     doc: "The output directory containing the generated dataset file(s)."
     outputBinding:
-      # This glob pattern assumes that the script creates a directory whose name matches the provided out_dir.
       glob: "$(inputs.out_dir)"
 
-#generate_mregle_embeddings
+#CWL generate_mregle_embeddings.cwl
 # CWL tool for generating joint embeddings with the trained VAE model
 cwlVersion: v1.2
 class: CommandLineTool
@@ -54,7 +57,11 @@ doc: |
   Required parameters:
    • --output_dir : directory where the embeddings file will be written.
    • --dataset : dataset type (e.g. ecgppg or ecg12).
-  
+
+requirements:
+  DockerRequirement:
+    dockerPull: ghcr.io/davidroberson/mregle:250210
+
 inputs:
   output_dir:
     type: string
@@ -76,7 +83,7 @@ outputs:
     outputBinding:
       glob: "$(inputs.output_dir)"
 
-# train_mregle
+#CWL mregle_train.cwl
 # CWL tool for training a M-REGLE model
 cwlVersion: v1.2
 class: CommandLineTool
@@ -91,7 +98,11 @@ doc: |
    • --validation_data_path : path to the validation dataset file (a NumPy .npy file).
    • --latent_dim : integer latent dimensionality (e.g. 12 or 96).
   Additional optional hyperparameters (e.g. random_seed, learning_rate, batch_size, num_epochs) may be provided.
-  
+
+requirements:
+  DockerRequirement:
+    dockerPull: ghcr.io/davidroberson/mregle:250210
+
 inputs:
   logging_dir:
     type: string
@@ -155,29 +166,35 @@ outputs:
     outputBinding:
       glob: "$(inputs.logging_dir)"
 
+
 #Dockerfile
 #Dockerfile that works for all tools in this collection
-# Use an official Python slim image (adjust the version if necessary)
+# Use an official Python slim image
 FROM python:3.9-slim
 
-# Install Git and any other build dependencies
+# Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
 
-# Set the working directory for the clone
+# Set the working directory
 WORKDIR /opt
 
-# Clone the entire genomics-research repository from GitHub
+# Clone the repository
 RUN git clone https://github.com/Google-Health/genomics-research.git
 
-# Set the working directory to the mregle folder
+# Set the working directory to mregle
 WORKDIR /opt/genomics-research/mregle
 
-# Upgrade pip and install Python dependencies from requirements.txt
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+# Remove problematic package from requirements.txt (if necessary)
+RUN sed -i '/dataclasses/d' requirements.txt
 
-# Default command: start an interactive shell (adjust if you want to run a specific script)
+# Upgrade pip and install dependencies
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Default command
 CMD ["bash"]
 
+#End Dockerfile
+#End file
